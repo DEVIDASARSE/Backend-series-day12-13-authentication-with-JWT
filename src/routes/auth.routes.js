@@ -1,6 +1,6 @@
 const express = require('express');
 const UserModel = require('../models/user.model');
-
+const jwt = require('jsonwebtoken');
 // auth.routes.js
 const router = express.Router();
 
@@ -16,15 +16,25 @@ router.post('/register', async (req, res) => {
 
 
     const user = await UserModel.create({
-         username, password 
-        
-        });// username and password are required and new user model are created
+        username, password
 
-        res.status(201).json({
-            message: 'User registered successfully',
-            user
+    });// username and password are required and new user model are created
 
-        });
+    const token = jwt.sign({
+        // object ke ander user ka unique data dena hota hai jo ki user ko identify kare
+        id: user._id,
+        // username: user.username
+
+    }, process.env.JWT_SECRET)
+
+
+     res.cookie("token", token)
+    res.status(201).json({
+        message: 'User registered successfully',
+        user,
+       // token // token is returned to the user
+
+    });
 });
 
 // Login route: isme ham sabse pahele username check karte hain agar user exist karta hai ya nahi than uska password check karte hain
@@ -48,31 +58,66 @@ router.post("/login", async (req, res) => {
     const { username, password } = req.body;
 
     const user = await UserModel.findOne({
-         username: username
+        username: username
         // findOne is used to find a user by username  data se data lata hai
         // username is a unique field in the user model
-        });
+    });
 
     if (!user) {
-        return res.status(401).json({ 
-            message: 'Invalid credentials [invalid username]' 
+        return res.status(401).json({
+            message: 'Invalid credentials [invalid username]'
         });
     }
 
-const isPasswordValid = password == user.password;
+    const isPasswordValid = password == user.password;
 
-if (!isPasswordValid) {
-    return res.status(401).json({
-        message: 'Invalid credentials [invalid password]'
+    if (!isPasswordValid) {
+        return res.status(401).json({
+            message: 'Invalid credentials [invalid password]'
+        });
+
+    }
+
+    res.status(200).json({
+        message: 'Login successful',
+
     });
 
-}
-
-res.status(200).json({
-    message: 'Login successful',
-    
 });
 
+
+router.get("/user", async (req, res) => {
+    // const { token } = req.body;// ab body me nhi cookies me data jayenga
+    const { token } = req.cookies;// cookies se token lete hain kyuki hamne cookie me token store kiya tha
+
+    if (!token) {
+        return res.status(401).json({
+            message: 'Unauthorized access'
+        });
+    }
+
+// jwt.verify me verify karne ke baad decoded object milta hai jo token ko use karte time use ker rahe the data user ki id use ker rahe the aur ham is id ki help se user findd karenge hamare model me uske baad jo bhi data hame milenga ham usko response me bhej denge
+
+    try {
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET)//verify method bas check karti hai sahi hai nhi
+       // res.send(decoded);// decoded object me user ka unique data hota hai jo ki user ko identify karta hai
+
+       const user = await UserModel.findOne({
+        _id: decoded.id// decoded.id is the user id from the token
+       }).select("-password").lean()
+       //select method me jo bhi likhenge usme vo nhi aayenge
+       res.status(200).json({
+           message: 'User data retrieved successfully',
+           user 
+        })
+
+    } catch (err) {
+        return res.status(401).json({
+            message: "Unauthorized - Invalid token"
+        })
+    }
 });
+
 
 module.exports = router;
